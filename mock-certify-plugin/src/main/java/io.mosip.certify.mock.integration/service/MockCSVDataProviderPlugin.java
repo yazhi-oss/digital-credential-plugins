@@ -16,6 +16,11 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.ResourceUtils;
 import org.springframework.util.StreamUtils;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.http.MediaType;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.json.JSONArray;
+import org.springframework.http.*;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -34,6 +39,8 @@ public class MockCSVDataProviderPlugin implements DataProviderPlugin {
     private CSVReader csvReader;
     @Value("${mosip.certify.mock.data-provider.csv-registry-uri}")
     private String csvRegistryURI;
+    @Value("${mosip.data-provider.url}")
+    private String dataProviderUrl;
     @Value("${mosip.certify.mock.data-provider.csv.identifier-column}")
     private String identifierColumn;
     @Value("#{'${mosip.certify.mock.data-provider.csv.data-columns}'.split(',')}")
@@ -79,8 +86,31 @@ public class MockCSVDataProviderPlugin implements DataProviderPlugin {
         try {
             String individualId = (String) identityDetails.get("sub");
             if (individualId != null) {
-                JSONObject jsonRes = csvReader.getJsonObjectByIdentifier(individualId);
-                return jsonRes;
+                RestTemplate restTemplate = new RestTemplate();
+
+                // Set headers
+                HttpHeaders headers = new HttpHeaders();
+                headers.setContentType(MediaType.APPLICATION_JSON);
+
+                // Create request body
+                String requestBody = "{\"filters\": {\"studentId\": {\"eq\": \"" + individualId + "\"}}, \"limit\": 1, \"offset\": 0}";
+
+                // Create HTTP entity with headers and body
+                HttpEntity<String> requestEntity = new HttpEntity<>(requestBody, headers);
+
+                // Send POST request
+                ResponseEntity<String> responseEntity = restTemplate.exchange(dataProviderUrl, HttpMethod.POST, requestEntity, String.class);
+
+                String response = responseEntity.getBody();
+
+                if (response != null) {
+                    JSONArray dataArray = new JSONArray(response);
+
+                    if (dataArray != null && dataArray.length() > 0) {
+                        JSONObject responseData = dataArray.getJSONObject(0);
+                        return responseData;
+                    }
+                }
             }
         } catch (Exception e) {
             log.error("Failed to fetch json data for from data provider plugin", e);
